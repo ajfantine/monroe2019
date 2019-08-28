@@ -1,3 +1,11 @@
+'''
+Generates headlines using the first file in the all-the-news dataset as training
+data. Can generate headlines of various diversities (more randomness in word choices)
+and has endline tokens built into the training so headlines are of various lengths.
+
+Author: Alex Fantine
+'''
+
 from keras.preprocessing.sequence import pad_sequences
 from keras.layers import Embedding, LSTM, Dense, Dropout
 from keras.preprocessing.text import Tokenizer
@@ -16,12 +24,11 @@ class Generator:
 
         self.model = load_model("headline-generator-v6.model")
 
-
+    #preprocess headlines data and splits each headline into a number of sequences
     def preprocess(self):
         headlines = []
         article_df = pd.read_csv('./all-the-news/articles1.csv')
         for i in range(len(article_df)):
-            #if article_df.publication[i] == 'Fox News':
             headlines.append(article_df.title[i])
 
         #arrays are not inherently mutable so use index to changes values
@@ -43,7 +50,6 @@ class Generator:
 
         tokenizer.fit_on_texts(headlines) #creates an integer:word dictionary
         total_words = len(tokenizer.word_index) + 1
-        #print('vocab size: ', total_words)
 
         input_sequences = []
         for line in headlines:
@@ -55,28 +61,17 @@ class Generator:
                 n_gram_sequence = token_list[:i+1]
                 input_sequences.append(n_gram_sequence)
 
-        #print(input_sequences[:25])
         #data must be padded to be accepted by keras, AKA all sequences must have same length
         max_seq_len = max([len(seq) for seq in input_sequences])
-        #print('max seq len: ', max_seq_len)
 
         #pad_sequences(input, maxlen, padding) padding defaults to pre
-        #why does it need to be pre and not post?
         input_sequences = np.array(pad_sequences(input_sequences, maxlen=max_seq_len))
-
-        #for v5, try normalizing the data
-        #input_sequences = input_sequences / (total_words-1)
-        #print('num seq: ', len(input_sequences))
-
-
 
         #split into data and labels, where the label is the last word in the sequence
         predictors, label = input_sequences[:,:-1], input_sequences[:,-1]
 
         #transforms only the label data into one hot vectors
         label = ku.to_categorical(label, num_classes=total_words)
-
-        #input_len = max_seq_len - 1
 
         return tokenizer, max_seq_len, headlines
 
@@ -91,7 +86,6 @@ class Generator:
 
         #number of distinct words in training set, size of embedding vectors,
         #size of each input sequence
-
         model.add(Embedding(total_words, 50, input_length = input_len))
 
         model.add(LSTM(100, return_sequences = True))
@@ -108,8 +102,6 @@ class Generator:
 
         #calculates with an ouput between 0 and 1
         model.compile(loss='categorical_crossentropy', optimizer = 'adam', metrics =['acc'])
-
-        #model.summary()
 
         model.fit(predictors, label, batch_size=128, epochs=50, verbose=1)
 
@@ -168,9 +160,8 @@ class Generator:
                     repeat += 1
                     break
 
-
+            #convert seed text into padded integer sequence
             token_list = self.tokenizer.texts_to_sequences([seed_text])[0]
-
             token_list = pad_sequences([token_list], maxlen=self.max_seq_len-1)
 
             predicted = self.model.predict(token_list, verbose=0)[0]
@@ -180,12 +171,9 @@ class Generator:
             for word, index in self.tokenizer.word_index.items():
                 if index == next_index:
                     seed_text += " " + word
-        #if repeat <=10:
 
         seed_list = seed_text.split(' ')
-        #print(seed_list)
         for i in range(len(seed_list)):
-            #print(seed_list[i])
             if seed_list[i] == 'asdf':
                 seed_list = seed_list[:i]
                 break
@@ -193,6 +181,7 @@ class Generator:
 
         return (seed_text, repeat)
 
+    #mostly used for testing within this class, can be removed and wont affect headline-gan.py
     def set_gen_value(self, num_words, seed_text, diversity, num_headlines, experiments=1):
         generated_headlines = []
         for i in range(num_headlines):
